@@ -114,30 +114,30 @@ class HillChartState extends ChangeNotifier {
     if (_items.isEmpty) return '';
     final data = _items.map((item) => item.toJson()).toList();
     final jsonString = jsonEncode(data);
-    return Uri.encodeComponent(jsonString);
+    return base64Url.encode(utf8.encode(jsonString));
   }
 
   void loadFromEncodedState(String encodedState) {
     if (encodedState.isEmpty) return;
-    
+
     try {
-      final decodedString = Uri.decodeComponent(encodedState);
+      final decodedString = utf8.decode(base64Url.decode(encodedState));
       final List<dynamic> data = jsonDecode(decodedString);
-      
+
       _items.clear();
       _items.addAll(data.map((json) => TodoItem.fromJson(json)));
-      
+
       // Update color index to avoid color collisions
       if (_items.isNotEmpty) {
         final usedColors = _items.map((item) => item.color.value).toSet();
         _colorIndex = 0;
-        while (_colorIndex < _colors.length && 
+        while (_colorIndex < _colors.length &&
                usedColors.contains(_colors[_colorIndex].value)) {
           _colorIndex++;
         }
         _colorIndex = _colorIndex % _colors.length;
       }
-      
+
       notifyListeners();
     } catch (e) {
       // If decoding fails, just start with empty state
@@ -153,7 +153,7 @@ class HillChartState extends ChangeNotifier {
 
 class HillChartScreen extends StatefulWidget {
   final String initialState;
-  
+
   const HillChartScreen({super.key, this.initialState = ''});
 
   @override
@@ -167,7 +167,7 @@ class _HillChartScreenState extends State<HillChartScreen> {
   @override
   void initState() {
     super.initState();
-    
+
     // Set up URL state change callback
     _hillChartState.onStateChange = (encodedState) {
       if (mounted) {
@@ -176,10 +176,10 @@ class _HillChartScreenState extends State<HillChartScreen> {
         context.go(newUri.toString());
       }
     };
-    
+
     // Load initial state from URL
     _hillChartState.loadFromEncodedState(widget.initialState);
-    
+
     _hillChartState.addListener(_onStateChanged);
   }
 
