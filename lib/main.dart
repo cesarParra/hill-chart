@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math';
+import 'dart:convert';
+import 'package:go_router/go_router.dart';
 
 void main() {
   runApp(const MyApp());
@@ -10,13 +12,25 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    final router = GoRouter(
+      routes: [
+        GoRoute(
+          path: '/',
+          builder: (context, state) {
+            final encodedState = state.uri.queryParameters['state'] ?? '';
+            return HillChartScreen(initialState: encodedState);
+          },
+        ),
+      ],
+    );
+
+    return MaterialApp.router(
       title: 'Hill Chart To-Do',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
-      home: const HillChartScreen(),
+      routerConfig: router,
     );
   }
 }
@@ -33,6 +47,25 @@ class TodoItem {
     this.position = 0.0,
     required this.color,
   });
+
+  // JSON serialization
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'position': position,
+      'color': color.value,
+    };
+  }
+
+  factory TodoItem.fromJson(Map<String, dynamic> json) {
+    return TodoItem(
+      id: json['id'],
+      title: json['title'],
+      position: json['position'].toDouble(),
+      color: Color(json['color']),
+    );
+  }
 }
 
 class HillChartState extends ChangeNotifier {
@@ -46,6 +79,7 @@ class HillChartState extends ChangeNotifier {
     Colors.pink,
   ];
   int _colorIndex = 0;
+  Function(String)? onStateChange;
 
   List<TodoItem> get items => _items;
 
@@ -59,22 +93,68 @@ class HillChartState extends ChangeNotifier {
       color: color,
     ));
     notifyListeners();
+    _updateUrl();
   }
 
   void updateItemPosition(String id, double position) {
     final item = _items.firstWhere((item) => item.id == id);
     item.position = position;
     notifyListeners();
+    _updateUrl();
   }
 
   void removeItem(String id) {
     _items.removeWhere((item) => item.id == id);
     notifyListeners();
+    _updateUrl();
+  }
+
+  // URL state management
+  String encodeState() {
+    if (_items.isEmpty) return '';
+    final data = _items.map((item) => item.toJson()).toList();
+    final jsonString = jsonEncode(data);
+    return Uri.encodeComponent(jsonString);
+  }
+
+  void loadFromEncodedState(String encodedState) {
+    if (encodedState.isEmpty) return;
+    
+    try {
+      final decodedString = Uri.decodeComponent(encodedState);
+      final List<dynamic> data = jsonDecode(decodedString);
+      
+      _items.clear();
+      _items.addAll(data.map((json) => TodoItem.fromJson(json)));
+      
+      // Update color index to avoid color collisions
+      if (_items.isNotEmpty) {
+        final usedColors = _items.map((item) => item.color.value).toSet();
+        _colorIndex = 0;
+        while (_colorIndex < _colors.length && 
+               usedColors.contains(_colors[_colorIndex].value)) {
+          _colorIndex++;
+        }
+        _colorIndex = _colorIndex % _colors.length;
+      }
+      
+      notifyListeners();
+    } catch (e) {
+      // If decoding fails, just start with empty state
+      print('Error loading state from URL: $e');
+    }
+  }
+
+  void _updateUrl() {
+    final encodedState = encodeState();
+    onStateChange?.call(encodedState);
   }
 }
 
 class HillChartScreen extends StatefulWidget {
-  const HillChartScreen({super.key});
+  final String initialState;
+  
+  const HillChartScreen({super.key, this.initialState = ''});
 
   @override
   _HillChartScreenState createState() => _HillChartScreenState();
@@ -87,6 +167,19 @@ class _HillChartScreenState extends State<HillChartScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Set up URL state change callback
+    _hillChartState.onStateChange = (encodedState) {
+      if (mounted) {
+        final newUri = Uri.parse(GoRouterState.of(context).uri.toString())
+            .replace(queryParameters: encodedState.isEmpty ? null : {'state': encodedState});
+        context.go(newUri.toString());
+      }
+    };
+    
+    // Load initial state from URL
+    _hillChartState.loadFromEncodedState(widget.initialState);
+    
     _hillChartState.addListener(_onStateChanged);
   }
 
