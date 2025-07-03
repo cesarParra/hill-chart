@@ -232,14 +232,23 @@ class _HillChartScreenState extends State<HillChartScreen> {
         children: [
           Expanded(
             flex: 3,
-            child: HillChartView(
-              items: _hillChartState.items,
-              onUpdatePosition: (id, position) {
-                _hillChartState.updateItemPosition(id, position);
-                if (position == 1.0) {
-                  _showDeleteConfirmationDialog(id);
-                }
-              },
+            child: Center(
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.8,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: HillChartView(
+                  items: _hillChartState.items,
+                  onUpdatePosition: (id, position) {
+                    _hillChartState.updateItemPosition(id, position);
+                    if (position == 1.0) {
+                      _showDeleteConfirmationDialog(id);
+                    }
+                  },
+                ),
+              ),
             ),
           ),
           Padding(
@@ -294,8 +303,13 @@ class _HillChartViewState extends State<HillChartView> {
   String? _draggedItemId;
 
   double _getHillY(double position, double chartHeight) {
-    final hillAmplitude = chartHeight / 2.5;
-    return chartHeight - (sin(position * pi) * hillAmplitude) - (chartHeight / 2);
+    // Create a parabola that touches the bottom of the container
+    // Using formula: y = -4 * amplitude * (x - 0.5)^2 + amplitude
+    // Where amplitude is the height of the hill
+    final amplitude = chartHeight * 0.6; // 60% of container height
+    final normalizedX = position - 0.5; // Center the parabola
+    final y = -4 * amplitude * normalizedX * normalizedX + amplitude;
+    return chartHeight - y;
   }
 
   @override
@@ -378,12 +392,19 @@ class HillChartPainter extends CustomPainter {
       ..strokeWidth = 2.0;
 
     final path = Path();
-    path.moveTo(0, size.height / 2);
-
-    for (double i = 1; i <= size.width; i++) {
+    
+    // Create a parabola that touches the bottom of the container
+    // Start from bottom left
+    path.moveTo(0, size.height);
+    
+    for (double i = 0; i <= size.width; i++) {
       final x = i;
-      final y = size.height - (sin((i / size.width) * pi) * (size.height / 2.5)) - (size.height / 2);
-      path.lineTo(x, y);
+      final position = i / size.width;
+      final amplitude = size.height * 0.6; // 60% of container height
+      final normalizedX = position - 0.5; // Center the parabola
+      final y = -4 * amplitude * normalizedX * normalizedX + amplitude;
+      final canvasY = size.height - y;
+      path.lineTo(x, canvasY);
     }
 
     canvas.drawPath(path, paint);
