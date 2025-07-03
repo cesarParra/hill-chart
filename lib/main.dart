@@ -40,13 +40,15 @@ class TodoItem {
   final String title;
   double position; // 0.0 to 1.0
   final Color color;
+  DateTime lastUpdated;
 
   TodoItem({
     required this.id,
     required this.title,
     this.position = 0.0,
     required this.color,
-  });
+    DateTime? lastUpdated,
+  }) : lastUpdated = lastUpdated ?? DateTime.now();
 
   // JSON serialization
   Map<String, dynamic> toJson() {
@@ -55,6 +57,7 @@ class TodoItem {
       'title': title,
       'position': position,
       'color': color.value,
+      'lastUpdated': lastUpdated.toIso8601String(),
     };
   }
 
@@ -64,7 +67,32 @@ class TodoItem {
       title: json['title'],
       position: json['position'].toDouble(),
       color: Color(json['color']),
+      lastUpdated: DateTime.parse(json['lastUpdated']),
     );
+  }
+
+  // Check if item is stale (not moved in 2 weekdays)
+  bool isStale() {
+    final now = DateTime.now();
+    final daysSinceUpdate = _calculateWeekdaysBetween(lastUpdated, now);
+    return daysSinceUpdate >= 2;
+  }
+
+  // Calculate weekdays between two dates (excluding weekends)
+  int _calculateWeekdaysBetween(DateTime start, DateTime end) {
+    int weekdays = 0;
+    DateTime current = DateTime(start.year, start.month, start.day);
+    final endDate = DateTime(end.year, end.month, end.day);
+    
+    while (current.isBefore(endDate)) {
+      // Monday = 1, Sunday = 7
+      if (current.weekday >= 1 && current.weekday <= 5) {
+        weekdays++;
+      }
+      current = current.add(const Duration(days: 1));
+    }
+    
+    return weekdays;
   }
 }
 
@@ -99,6 +127,7 @@ class HillChartState extends ChangeNotifier {
   void updateItemPosition(String id, double position) {
     final item = _items.firstWhere((item) => item.id == id);
     item.position = position;
+    item.lastUpdated = DateTime.now(); // Update the last moved timestamp
     notifyListeners();
     _updateUrl();
   }
@@ -299,8 +328,33 @@ class HillChartView extends StatefulWidget {
   _HillChartViewState createState() => _HillChartViewState();
 }
 
-class _HillChartViewState extends State<HillChartView> {
+class _HillChartViewState extends State<HillChartView> with TickerProviderStateMixin {
   String? _draggedItemId;
+  late AnimationController _flashAnimationController;
+  late Animation<double> _flashAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _flashAnimationController = AnimationController(
+      duration: const Duration(seconds: 1),
+      vsync: this,
+    );
+    _flashAnimation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _flashAnimationController,
+      curve: Curves.easeInOut,
+    ));
+    _flashAnimationController.repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _flashAnimationController.dispose();
+    super.dispose();
+  }
 
   double _getHillY(double position, double chartHeight) {
     // Create a parabola that touches the bottom of the container
@@ -356,21 +410,28 @@ class _HillChartViewState extends State<HillChartView> {
                   left: item.position * chartWidth - 10,
                   top: _getHillY(item.position, chartHeight) - 10,
                   child: Tooltip(
-                    message: item.title,
-                    child: Container(
-                      width: 20,
-                      height: 20,
-                      decoration: BoxDecoration(
-                        color: item.color,
-                        shape: BoxShape.circle,
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
+                    message: '${item.title}\nLast updated: ${_formatDate(item.lastUpdated)}',
+                    child: AnimatedBuilder(
+                      animation: _flashAnimation,
+                      builder: (context, child) {
+                        return Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: item.isStale() 
+                                ? item.color.withOpacity(_flashAnimation.value)
+                                : item.color,
+                            shape: BoxShape.circle,
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black26,
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
                   ),
                 );
@@ -380,6 +441,10 @@ class _HillChartViewState extends State<HillChartView> {
         );
       },
     );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
 }
 
