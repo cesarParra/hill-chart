@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
 import 'dart:convert';
 import 'package:go_router/go_router.dart';
 
@@ -83,7 +82,7 @@ class TodoItem {
     int weekdays = 0;
     DateTime current = DateTime(start.year, start.month, start.day);
     final endDate = DateTime(end.year, end.month, end.day);
-    
+
     while (current.isBefore(endDate)) {
       // Monday = 1, Sunday = 7
       if (current.weekday >= 1 && current.weekday <= 5) {
@@ -91,7 +90,7 @@ class TodoItem {
       }
       current = current.add(const Duration(days: 1));
     }
-    
+
     return weekdays;
   }
 }
@@ -108,6 +107,7 @@ class HillChartState extends ChangeNotifier {
   ];
   int _colorIndex = 0;
   Function(String)? onStateChange;
+  bool _isInitializing = false;
 
   List<TodoItem> get items => _items;
 
@@ -197,9 +197,11 @@ class _HillChartScreenState extends State<HillChartScreen> {
   void initState() {
     super.initState();
 
+    _hillChartState._isInitializing = true;
+
     // Set up URL state change callback
     _hillChartState.onStateChange = (encodedState) {
-      if (mounted) {
+      if (mounted && !_hillChartState._isInitializing) {
         final newUri = Uri.parse(GoRouterState.of(context).uri.toString())
             .replace(queryParameters: encodedState.isEmpty ? null : {'state': encodedState});
         context.go(newUri.toString());
@@ -210,6 +212,8 @@ class _HillChartScreenState extends State<HillChartScreen> {
     _hillChartState.loadFromEncodedState(widget.initialState);
 
     _hillChartState.addListener(_onStateChanged);
+
+    _hillChartState._isInitializing = false;
   }
 
   @override
@@ -418,7 +422,7 @@ class _HillChartViewState extends State<HillChartView> with TickerProviderStateM
                           width: 20,
                           height: 20,
                           decoration: BoxDecoration(
-                            color: item.isStale() 
+                            color: item.isStale()
                                 ? item.color.withOpacity(_flashAnimation.value)
                                 : item.color,
                             shape: BoxShape.circle,
@@ -457,11 +461,11 @@ class HillChartPainter extends CustomPainter {
       ..strokeWidth = 2.0;
 
     final path = Path();
-    
+
     // Create a parabola that touches the bottom of the container
     // Start from bottom left
     path.moveTo(0, size.height);
-    
+
     for (double i = 0; i <= size.width; i++) {
       final x = i;
       final position = i / size.width;
